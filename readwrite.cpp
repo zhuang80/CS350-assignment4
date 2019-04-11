@@ -60,6 +60,7 @@ void *monitor(void *arg){
 
 void *reader(void *arg){
 //	cout<<"reader begin"<<endl;
+	timespec sleepTime={0, 0};
 	sem_wait(&rmutex);
 	readerThread++;
 	sem_post(&rmutex);
@@ -90,6 +91,7 @@ void *reader(void *arg){
 		if(readcount==0) sem_post(&resource);
 		sem_post(&rmutex);
 		//cout<<"reader end"<<endl;
+		nanosleep(&sleepTime,NULL);
 	}
 	sem_wait(&rmutex);
 	readerThread--;
@@ -100,18 +102,18 @@ void *reader(void *arg){
 
 void *writer(void *arg){
 	//cout<<" write begin"<<endl;
+	timespec sleepTime={0, 0};
 	long w=(long)arg;
-	int n=rand()%100+1;
 	int a,b;
-	for(int i=0;i<n;i++){
+	
+	for(int i=0;i<N;i++){
 		sem_wait(&wmutex);
 		writecount++;
 		if(writecount==1) sem_wait(&readTry);
 		sem_post(&wmutex);
 
-	
-		//a=rand()%INT_MAX;
-		a=rand()%1000000;
+		//between 1 and 1000, end in i, i is between 1-9
+		a=rand()%999+1;
 		b=a%10;
 		a=a-b+w;
 
@@ -125,7 +127,8 @@ void *writer(void *arg){
 		if(writecount==0) sem_post(&readTry);
 		sem_post(&wmutex);
 		//cout<<"sleeping...."<<endl;
-		this_thread::sleep_for(chrono::microseconds(1));//sleep after each write
+		//this_thread::sleep_for(chrono::microseconds(1));//sleep after each write
+		nanosleep(&sleepTime,NULL);
 	}
 	//cout<<"writer end"<<endl;
 	return NULL;
@@ -146,8 +149,8 @@ int main(int argc, char * argv[]){
 		cerr<<"The number W must be between 1 and 9."<<endl;
 		return 1;
 	} 
-	if(N<1 || N>1000){
-		cerr<<"The number N must be between 1 and 1000."<<endl;
+	if(N<1 || N>100){
+		cerr<<"The number N must be between 1 and 100."<<endl;
 		return 1;	
 	} 
 	
