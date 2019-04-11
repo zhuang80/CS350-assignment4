@@ -65,6 +65,7 @@ void *reader(void *arg){
 	readerThread++;
 	sem_post(&rmutex);
 	long r=(long)arg;
+	
 	int * results=(int*) malloc(N*sizeof(int));
 
 	for(int i=0;i<N;i++){
@@ -104,6 +105,7 @@ void *writer(void *arg){
 	//cout<<" write begin"<<endl;
 	timespec sleepTime={0, 0};
 	long w=(long)arg;
+	
 	int a,b;
 	
 	for(int i=0;i<N;i++){
@@ -177,7 +179,7 @@ int main(int argc, char * argv[]){
 	//create threads 
 	int rc;
 	for(int i=1;i<=W;i++){
-		rc=pthread_create(&writers[i-1], NULL, writer, (void*)i);
+		rc=pthread_create(&writers[i-1], NULL, writer, (void*)(unsigned long long) i);
 		if(rc){
 			cerr<<"Fail to create writer threads."<<endl;
 			return 1;
@@ -185,7 +187,7 @@ int main(int argc, char * argv[]){
 	}
 
 	for(int i=1;i<=R;i++){
-		rc=pthread_create(&readers[i-1], NULL, reader, (void *)i);
+		rc=pthread_create(&readers[i-1], NULL, reader, (void*)(unsigned long long) i);
 		if(rc){
 			cerr<<"Fail to create reader threads."<<endl;
 			return 1;
