@@ -3,12 +3,10 @@
 #include<pthread.h>
 #include<string>
 #include<stdlib.h>
-#include<limits.h>
 #include<time.h>
 #include<unistd.h>
 #include<semaphore.h>
-#include<chrono>
-#include<thread>
+
 
 using namespace std;
 
