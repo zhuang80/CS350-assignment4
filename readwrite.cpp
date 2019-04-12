@@ -5,13 +5,20 @@
 #include<stdlib.h>
 #include<time.h>
 #include<unistd.h>
-#include<semaphore.h>
+//#include<semaphore.h>
+#include<assert.h>
 
 
 using namespace std;
 
 int readcount=0, writecount=0,readerThread=0, N, R, W;
-sem_t rmutex, wmutex, readTry, resource, almostDone;
+//sem_t rmutex, wmutex, readTry, resource, almostDone;
+pthread_mutex_t rmutex=PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t wmutex=PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t mmutex=PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t readTry=PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t resource=PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t almostDone=PTHREAD_COND_INITIALIZER;
 
 struct node{
 	int data;
@@ -26,7 +33,22 @@ void List_Init(list *l){
 	l->head=NULL;
 	l->tail=NULL;
 }
-
+void Pthread_mutex_lock(pthread_mutex_t *mutex){
+	int rc=pthread_mutex_lock(mutex);
+	assert(rc==0);
+}
+void Pthread_mutex_unlock(pthread_mutex_t *mutex){
+	int rc=pthread_mutex_unlock(mutex);
+	assert(rc==0);
+}
+void Pthread_cond_wait(pthread_cond_t *cond, pthread_mutex_t *mutex){
+	int rc=pthread_cond_wait(cond, mutex);
+	assert(rc==0);
+}
+void Pthread_cond_signal(pthread_cond_t *cond){
+	int rc=pthread_cond_signal(cond);
+	assert(rc==0);
+}
 void List_Insert(list *l, int d){
 	node *newNode=(node*)malloc(sizeof(node));
 	newNode->data=d;
@@ -51,7 +73,11 @@ int List_Traverse(list *l, int n){
 }
 
 void *monitor(void *arg){
-	sem_wait(&almostDone);
+	//sem_wait(&almostDone);
+	Pthread_mutex_lock(&mmutex);
+	while(readerThread>1)
+		Pthread_cond_wait(&almostDone, &mmutex);
+	Pthread_mutex_unlock(&mmutex);
 	cout<<"Almost Done!"<<endl;
 	return NULL;
 }
@@ -59,20 +85,20 @@ void *monitor(void *arg){
 void *reader(void *arg){
 //	cout<<"reader begin"<<endl;
 	timespec sleepTime={0, 0};
-	sem_wait(&rmutex);
-	readerThread++;
-	sem_post(&rmutex);
+	//Pthread_mutex_lock(&rmutex);//sem_wait(&rmutex);
+	//readerThread++;
+	//Pthread_mutex_unlock(&rmutex);//sem_post(&rmutex);
 	long r=(long)arg;
 	
 	int * results=(int*) malloc(N*sizeof(int));
 
 	for(int i=0;i<N;i++){
-		sem_wait(&readTry);
-		sem_wait(&rmutex);
+		Pthread_mutex_lock(&readTry);//sem_wait(&readTry);
+		Pthread_mutex_lock(&rmutex);//sem_wait(&rmutex);
 		readcount++;
-		if(readcount==1) sem_wait(&resource);
-		sem_post(&rmutex);
-		sem_post(&readTry);
+		if(readcount==1) Pthread_mutex_lock(&resource);//sem_wait(&resource);
+		Pthread_mutex_unlock(&rmutex);//sem_post(&rmutex);
+		Pthread_mutex_unlock(&readTry);//sem_post(&readTry);
 
 		//read
 		//cout<<"reading...."<<endl;
@@ -85,17 +111,17 @@ void *reader(void *arg){
 		for(int i=0;i<N;i++){
 			myfile<<"Reader "<<r<<": Read "<<i+1<<": "<<results[i]<<" values ending in "<<r<<endl;
 		}
-		sem_wait(&rmutex);
+		Pthread_mutex_lock(&rmutex);//sem_wait(&rmutex);
 		readcount--;
-		if(readcount==0) sem_post(&resource);
-		sem_post(&rmutex);
+		if(readcount==0) Pthread_mutex_unlock(&resource);//sem_post(&resource);
+		Pthread_mutex_unlock(&rmutex);//sem_post(&rmutex);
 		//cout<<"reader end"<<endl;
 		nanosleep(&sleepTime,NULL);
 	}
-	sem_wait(&rmutex);
+	Pthread_mutex_lock(&mmutex);//sem_wait(&rmutex);
 	readerThread--;
-	if(readerThread==1) sem_post(&almostDone);
-	sem_post(&rmutex);
+	if(readerThread==1) Pthread_cond_signal(&almostDone);//sem_post(&almostDone);
+	Pthread_mutex_unlock(&mmutex);//sem_post(&rmutex);
 	return NULL;
 }
 
@@ -107,25 +133,25 @@ void *writer(void *arg){
 	int a,b;
 	
 	for(int i=0;i<N;i++){
-		sem_wait(&wmutex);
+		Pthread_mutex_lock(&wmutex);//sem_wait(&wmutex);
 		writecount++;
-		if(writecount==1) sem_wait(&readTry);
-		sem_post(&wmutex);
+		if(writecount==1) Pthread_mutex_lock(&readTry);//sem_wait(&readTry);
+		Pthread_mutex_unlock(&wmutex);//sem_post(&wmutex);
 
 		//between 1 and 1000, end in i, i is between 1-9
 		a=rand()%999+1;
 		b=a%10;
 		a=a-b+w;
 
-		sem_wait(&resource);
+		Pthread_mutex_lock(&resource);//sem_wait(&resource);
 		//cout<<"writing...."<<endl;
 		List_Insert(&myList, a);	
-		sem_post(&resource);
+		Pthread_mutex_unlock(&resource);//sem_post(&resource);
 		
-		sem_wait(&wmutex);
+		Pthread_mutex_lock(&wmutex);//sem_wait(&wmutex);
 		writecount--;
-		if(writecount==0) sem_post(&readTry);
-		sem_post(&wmutex);
+		if(writecount==0) Pthread_mutex_unlock(&readTry);//sem_post(&readTry);
+		Pthread_mutex_unlock(&wmutex);//sem_post(&wmutex);
 		//cout<<"sleeping...."<<endl;
 		//this_thread::sleep_for(chrono::microseconds(1));//sleep after each write
 		nanosleep(&sleepTime,NULL);
@@ -156,12 +182,13 @@ int main(int argc, char * argv[]){
 	
 	List_Init(&myList);
 	srand(time(NULL));
-	sem_init(&rmutex, 0, 1);
+	readerThread=R;
+	/*sem_init(&rmutex, 0, 1);
 	sem_init(&wmutex, 0, 1);
 	sem_init(&readTry, 0, 1);
 	sem_init(&resource, 0, 1);
 	sem_init(&almostDone, 0, 0);
-
+*/
 	pthread_t *readers=(pthread_t *)malloc(R*sizeof(pthread_t));
 	if(readers==NULL){
 		cerr<<"Fail to allocate readers."<<endl;
@@ -176,6 +203,15 @@ int main(int argc, char * argv[]){
 	pthread_t m;
 	//create threads 
 	int rc;
+
+	rc=pthread_create(&m, NULL, monitor, NULL);
+	if(rc){
+			cerr<<"Fail to create monitor threads."<<endl;
+			return 1;
+	}
+
+	
+
 	for(int i=1;i<=W;i++){
 		rc=pthread_create(&writers[i-1], NULL, writer, (void*)(unsigned long long) i);
 		if(rc){
@@ -192,11 +228,7 @@ int main(int argc, char * argv[]){
 		}
 	}
 
-	rc=pthread_create(&m, NULL, monitor, NULL);
-	if(rc){
-			cerr<<"Fail to create monitor threads."<<endl;
-			return 1;
-	}
+	
 	//wait for the threads to completion
 	for(int i=0;i<W;i++){
 		rc=pthread_join(writers[i], NULL);
@@ -219,6 +251,7 @@ int main(int argc, char * argv[]){
 			cerr<<"Fail to join for the monitor thread."<<endl;
 			return 1;
 	}
+	
 
 	free(readers);
 	free(writers);
